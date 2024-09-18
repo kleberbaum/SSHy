@@ -1,0 +1,161 @@
+<html>
+<head>
+    <script type="text/javascript" src="js/combinedLibs.comb.js"></script>
+	<script type="text/javascript">
+        setProxyEncoding("binary");
+
+        // override startSSHy from SSHyClient.js to directly set
+        // username, pasword
+        // Starts the SSH client in scripts/transport.js
+		function startSSHy() {
+			var html_ipaddress = "127.0.0.1"
+			var termUsername = "root"
+			var termPassword = "root"
+
+            if (wsproxyEncoding == 'binary') {
+            } else {
+                wsproxyEncoding = 'base64';
+            }
+                
+			// find the port number
+			if (html_ipaddress.includes(':')) {
+				var split = html_ipaddress.split(':')
+				html_ipaddress = split[0]
+				html_port = validate_port(split[1])
+			} else {
+				html_port = 22
+			}
+
+			if (termUsername.length == 0 || termPassword.length == 0) {
+				validate('username', termUsername)
+				validate('password', termPassword)
+				return
+			}
+
+			// Error checking is done so remove any currently displayed errors
+			document.getElementById('failure').style.display = "none"
+			document.getElementById('connect').value = 'Connecting...'
+			document.getElementById('load-container').style.display = "block"
+
+			// Disable websocket proxy modifications
+			document.getElementById('websockURL').disabled = true
+
+			// Initialise the window title
+			document.title = "SSHy Client";
+			// Opens the websocket!
+			wsproxyURL += html_ipaddress + ':' + html_port
+
+            if (wsproxyEncoding == 'binary') {
+                ws = new WebSocket(wsproxyURL);
+                ws.binaryType = "arraybuffer";
+            } else {
+                ws = new WebSocket(wsproxyURL, 'base64');
+            }
+
+			// Sets up websocket listeners
+			ws.onopen = function(e) {
+				transport = new SSHyClient.Transport(ws, settings);
+				transport.auth.termUsername = termUsername;
+				transport.auth.termPassword = termPassword;
+				transport.auth.hostname = html_ipaddress;
+			};
+			// Send all recieved messages to SSHyClient.Transport.handle()
+			ws.onmessage = function(e) {
+				// Convert the recieved data from base64 to a string
+                if (wsproxyEncoding == 'binary') {
+                    // ArrayBuffer to String
+                    transport.parceler.handle(ab2str(e.data));
+                } else {
+                    // Convert the recieved data from base64 to a string
+                    transport.parceler.handle(atob(e.data));
+                }
+			};
+			// Whenever the websocket is closed make sure to display an error if appropriate
+			ws.onclose = function(e) {
+				// Set the sidenav websocket proxy color to yellow
+				document.getElementById('websockURL').classList.remove('brightgreen')	
+				document.getElementById('websockURL').classList.add('brightyellow')	
+				if (term) {
+					// Don't display an error if SSH transport has already detected a graceful exit
+					if (transport.closing) {
+						return;
+					}
+					term.write('\n\n\rWebsocket connection to ' + transport.auth.hostname + ' was unexpectedly closed.');
+					// If there is no keepAliveInterval then inform users they can use it
+					if (!settings.keepAliveInterval) {
+						term.write('\n\n\rThis was likely caused by he remote SSH server timing out the session due to inactivity.\r\n- Session Keep Alive interval can be set in the settings to prevent this behaviour.');
+					}
+				} else {
+					// Since no terminal exists we need to initialse one before being able to write the error
+					termInit();
+					term.write('WebSocket connection failed: Error in connection establishment: code ' + e.code);
+				}
+			};
+			// Just a little abstraction from ws.send
+			ws.sendB64 = function(e){
+				if (wsproxyEncoding == 'binary') {
+				this.send(str2ab(e));
+
+				transport.parceler.transmitData += e.length;
+				transport.settings.setNetTraffic(transport.parceler.transmitData, false);
+				} else {
+					this.send(btoa(e));
+					transport.parceler.transmitData += e.length;
+					settings.setNetTraffic(transport.parceler.transmitData, false);
+				}
+			};
+
+			// Set the sidenav websocket proxy color to green
+			document.getElementById('websockURL').classList.add('brightgreen')
+		}
+	</script>
+	<link rel="stylesheet" href="css/xterm.css" />
+	<link rel="stylesheet" href="css/main.css" />
+</head>
+<body>
+    <script>
+        // Function to log messages to the console-log div
+        function logToConsoleDiv(message, isError = false) {
+          const logDiv = document.getElementById('console-log');
+          const logEntry = document.createElement('div');
+          logEntry.textContent = message;
+      
+          if (isError) {
+            logEntry.style.color = 'red';  // Highlight errors in red
+          }
+      
+          logDiv.appendChild(logEntry);
+          logDiv.scrollTop = logDiv.scrollHeight; // Auto scroll to the latest log
+        }
+      
+        // Override console.log
+        console.log = (function(origLog) {
+          return function(...args) {
+            origLog.apply(console, args);
+            logToConsoleDiv(args.join(' '));  // Display in console-log div
+          };
+        })(console.log);
+      
+        // Override console.error
+        console.error = (function(origError) {
+          return function(...args) {
+            origError.apply(console, args);
+            logToConsoleDiv(args.join(' '), true);  // Display errors in red in console-log div
+          };
+        })(console.error);
+      
+        // Capture uncaught errors
+        window.onerror = function(message, source, lineno, colno, error) {
+          logToConsoleDiv(`Error: ${message} at ${source}:${lineno}:${colno}`, true);
+          return true; // Prevent the default browser error handling
+        };
+      
+        // Capture unhandled promise rejections
+        window.addEventListener('unhandledrejection', function(event) {
+          logToConsoleDiv('Unhandled Promise Rejection: ' + event.reason, true);
+        });
+      
+    </script>
+	<div id="terminal" style="height:100%;"></div>
+</body>
+</html>
