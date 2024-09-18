@@ -48,73 +48,6 @@ if (window.msCrypto){
 	}
 }
 
-// Stores timeouts for window.onresize()
-var resizeInterval;
-window.onload = function() {
-	// Appending the settings UI to keep 'wrapper.html' as small as possible for cgi builds on Linuxzoo.net
-	document.body.innerHTML += `<div id="settingsNav" class="sidenav">
-									<a href="javascript:;" class="closebtn" onclick="toggleNav(0)">&times;</a>
-									<span class="title large">Terminal Options</span>
-									<hr>
-									<span class="title" style="padding-top:20px">Font Size</span>
-									<a class="leftarrow" href="javascript:;" onclick="transport.settings.modFontSize(-1)">\<--</a>
-									<span class="middle" id="currentFontSize">16px</span>
-									<a class="rightarrow" href="javascript:;" onclick="transport.settings.modFontSize(1)">--\></a>
-									<span class="title" style="padding-top:40px">Terminal Size</span>
-									<span class="leftarrow">Cols:
-										<input type="number" id="termCols" min="5" oninput="transport.settings.modTerm(0, this.value)">
-									</span>
-									<span class="rightarrow">Rows:
-										<input type="number" id="termRows" min="5" oninput="transport.settings.modTerm(1, this.value)">
-									</span>
-									<span class="title" style="padding-top:60px;">Local Echo</span>
-									<a class="leftarrow" href="javascript:;" onclick="transport.settings.setLocalEcho(-1)">\<--</a>
-									<a class="rightarrow" href="javascript:;" onclick="transport.settings.setLocalEcho(1)">--\></a>
-									<div class="fileUpload btn btn-primary nomargin">
-										<span class="tooltiptext" style="visibility:visible;" id="autoEchoState">State: Enabled</span>
-										<span class="middle" id="currentLEcho">Force Off</span>
-									</div>
-									<span class="title" style="padding-top:50px">Colours</span>
-									<a class="leftarrow" href="javascript:;" onclick="transport.settings.cycleColorSchemes(0)">\<--</a>
-									<span class="middle" id="currentColor">Monokai</span>
-									<a class="rightarrow" href="javascript:;" onclick="transport.settings.cycleColorSchemes(1)">--\></a>
-									<div class="fileUpload btn btn-primary">
-										<span class="tooltiptext">Format: Xresources</span>
-										<span class="middle" style="width:220px;">Upload</span>
-										<input type="file" title=" " id="Xresources" class="upload" onchange="transport.settings.importXresources()" />
-									</div>
-									<span class="title" style="padding-top:20px;">Keep Alive</span>
-									<div class="fileUpload btn btn-primary">
-										<span class="tooltiptext">0 to disable</span>
-										<input type="number" class="large" id="keepAlive" onchange="transport.settings.setKeepAlive(this.value);" placeholder="0">
-										<span style="font-size:16px;"> seconds</span>
-									</div>
-									<span class="title" style="padding-top:20px;">Network Traffic</span>
-									<div class="netTraffic">
-										<span class="leftarrow brightgreen">rx: <span id="rxTraffic"></span></span>
-										<span class="rightarrow brightyellow">tx: <span id="txTraffic"></span></span>
-									</div>
-									<div id="hostKey" style="display: none;">
-								        <span class="title" style="padding-top:20px;">Host Key</span>
-								        <span id="hostKeyImg" class="hostKeyImg"></span>
-								    </div>
-								</div>
-								<span id="gear" class="gear" style="visibility:visible;" onclick="toggleNav(250)">&#9881</span>`;
-
-	// After the page loads start up the SSH client
-	startSSHy();
-};
-// Sets up a bind for every time the web browser is resized
-window.onresize = function(){
-	clearTimeout(resizeInterval);
-	resizeInterval = setTimeout(resize, 400);
-};
-// Run every time the page is refreshed / closed to disconnect from the SSH server
-window.onbeforeunload = function() {
-    if (ws || transport) {
-        transport.disconnect();
-    }
-};
 // Recalculates the terminal Columns / Rows and sends new size to SSH server + xtermjs
 function resize() {
   if (term) {
@@ -144,6 +77,11 @@ function startSSHy() {
     // Initialise the window title
     document.title = "SSHy Client";
 
+    // Add ssh credentials in code
+    var html_ipaddress = "127.0.0.1"
+    var termUsername = "root"
+    var termPassword = "root"
+
     // Opens the websocket!
    
     if (wsproxyEncoding == 'binary') {
@@ -160,14 +98,18 @@ function startSSHy() {
 
     // Sets up websocket listeners
     ws.onopen = function(e) {
-        transport = new SSHyClient.Transport(ws);
+      transport = new SSHyClient.Transport(ws);
 
-		/*
-		!! Enables or disables RSA Host checking !!
-		Since Linuxzoo changes host every time there is no reason to use it
-		*/
+      transport.auth.termUsername = termUsername;
+      transport.auth.termPassword = termPassword;
+      transport.auth.hostname = html_ipaddress;
 
-		transport.settings.rsaCheckEnabled = false;
+      /*
+      !! Enables or disables RSA Host checking !!
+      Since Linuxzoo changes host every time there is no reason to use it
+      */
+
+      transport.settings.rsaCheckEnabled = false;
     };
 	// Send all recieved messages to SSHyClient.Transport.handle()
     ws.onmessage = function(e) {

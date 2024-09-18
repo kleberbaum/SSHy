@@ -1,113 +1,44 @@
 <html>
 <head>
-    <script type="text/javascript" src="js/combinedLibs.comb.js"></script>
+    <script src="js/defines.js"></script>
+    <script src="js/src/BigInteger.min.js"></script>
+    <script src="js/src/Hash.min.js"></script>
+    <script src="js/src/aes.min.js"></script>
+    <script src="js/src/randomart.js"></script>
+    <script src="js/src/struct.min.js"></script>
+    <script src="js/src/utilities.min.js"></script>
+    <script src="js/dhKex.js"></script>
+    <script src="js/transport.js"></script>
+    <script src="js/src/xterm-addon-fit.js"></script>
+    <script src="js/auth_handler.js"></script>
+    <script src="js/crypto.js"></script>
+    <script src="js/message.js"></script>
+    <script src="js/parceler.js"></script>
+    <script src="js/rsaKey.js"></script>
+    <script src="js/src/xterm.js"></script>
+    <script src="js/settings.js"></script>
+    <script src="js/SSHyClient.js"></script>
 	<script type="text/javascript">
-        setProxyEncoding("binary");
-
-        // override startSSHy from SSHyClient.js to directly set
-        // username, pasword
-        // Starts the SSH client in scripts/transport.js
-		function startSSHy() {
-			var html_ipaddress = "127.0.0.1"
-			var termUsername = "root"
-			var termPassword = "root"
-
-            if (wsproxyEncoding == 'binary') {
-            } else {
-                wsproxyEncoding = 'base64';
-            }
-                
-			// find the port number
-			if (html_ipaddress.includes(':')) {
-				var split = html_ipaddress.split(':')
-				html_ipaddress = split[0]
-				html_port = validate_port(split[1])
-			} else {
-				html_port = 22
+		// Stores timeouts for window.onresize()
+		var resizeInterval;
+		window.onload = function() {
+			// After the page loads start up the SSH client
+			startSSHy();
+		};
+		// Sets up a bind for every time the web browser is resized
+		window.onresize = function(){
+			clearTimeout(resizeInterval);
+			resizeInterval = setTimeout(resize, 400);
+		};
+		// Run every time the page is refreshed / closed to disconnect from the SSH server
+		window.onbeforeunload = function() {
+			if (ws || transport) {
+				transport.disconnect();
 			}
-
-			if (termUsername.length == 0 || termPassword.length == 0) {
-				validate('username', termUsername)
-				validate('password', termPassword)
-				return
-			}
-
-			// Error checking is done so remove any currently displayed errors
-			document.getElementById('failure').style.display = "none"
-			document.getElementById('connect').value = 'Connecting...'
-			document.getElementById('load-container').style.display = "block"
-
-			// Disable websocket proxy modifications
-			document.getElementById('websockURL').disabled = true
-
-			// Initialise the window title
-			document.title = "SSHy Client";
-			// Opens the websocket!
-			wsproxyURL += html_ipaddress + ':' + html_port
-
-            if (wsproxyEncoding == 'binary') {
-                ws = new WebSocket(wsproxyURL);
-                ws.binaryType = "arraybuffer";
-            } else {
-                ws = new WebSocket(wsproxyURL, 'base64');
-            }
-
-			// Sets up websocket listeners
-			ws.onopen = function(e) {
-				transport = new SSHyClient.Transport(ws, settings);
-				transport.auth.termUsername = termUsername;
-				transport.auth.termPassword = termPassword;
-				transport.auth.hostname = html_ipaddress;
-			};
-			// Send all recieved messages to SSHyClient.Transport.handle()
-			ws.onmessage = function(e) {
-				// Convert the recieved data from base64 to a string
-                if (wsproxyEncoding == 'binary') {
-                    // ArrayBuffer to String
-                    transport.parceler.handle(ab2str(e.data));
-                } else {
-                    // Convert the recieved data from base64 to a string
-                    transport.parceler.handle(atob(e.data));
-                }
-			};
-			// Whenever the websocket is closed make sure to display an error if appropriate
-			ws.onclose = function(e) {
-				// Set the sidenav websocket proxy color to yellow
-				document.getElementById('websockURL').classList.remove('brightgreen')	
-				document.getElementById('websockURL').classList.add('brightyellow')	
-				if (term) {
-					// Don't display an error if SSH transport has already detected a graceful exit
-					if (transport.closing) {
-						return;
-					}
-					term.write('\n\n\rWebsocket connection to ' + transport.auth.hostname + ' was unexpectedly closed.');
-					// If there is no keepAliveInterval then inform users they can use it
-					if (!settings.keepAliveInterval) {
-						term.write('\n\n\rThis was likely caused by he remote SSH server timing out the session due to inactivity.\r\n- Session Keep Alive interval can be set in the settings to prevent this behaviour.');
-					}
-				} else {
-					// Since no terminal exists we need to initialse one before being able to write the error
-					termInit();
-					term.write('WebSocket connection failed: Error in connection establishment: code ' + e.code);
-				}
-			};
-			// Just a little abstraction from ws.send
-			ws.sendB64 = function(e){
-				if (wsproxyEncoding == 'binary') {
-				this.send(str2ab(e));
-
-				transport.parceler.transmitData += e.length;
-				transport.settings.setNetTraffic(transport.parceler.transmitData, false);
-				} else {
-					this.send(btoa(e));
-					transport.parceler.transmitData += e.length;
-					settings.setNetTraffic(transport.parceler.transmitData, false);
-				}
-			};
-
-			// Set the sidenav websocket proxy color to green
-			document.getElementById('websockURL').classList.add('brightgreen')
-		}
+		};
+	</script>
+	<script type="text/javascript">
+		setProxyEncoding("binary");
 	</script>
 	<link rel="stylesheet" href="css/xterm.css" />
 	<link rel="stylesheet" href="css/main.css" />
@@ -158,5 +89,53 @@
       
     </script>
 	<div id="terminal" style="height:100%;"></div>
+	<div id="settingsNav" class="sidenav">
+		<a href="javascript:;" class="closebtn" onclick="toggleNav(0)">&times;</a>
+		<span class="title large">Terminal Options</span>
+		<hr>
+		<span class="title" style="padding-top:20px">Font Size</span>
+		<a class="leftarrow" href="javascript:;" onclick="transport.settings.modFontSize(-1)">\<--</a>
+		<span class="middle" id="currentFontSize">16px</span>
+		<a class="rightarrow" href="javascript:;" onclick="transport.settings.modFontSize(1)">--\></a>
+		<span class="title" style="padding-top:40px">Terminal Size</span>
+		<span class="leftarrow">Cols:
+			<input type="number" id="termCols" min="5" oninput="transport.settings.modTerm(0, this.value)">
+		</span>
+		<span class="rightarrow">Rows:
+			<input type="number" id="termRows" min="5" oninput="transport.settings.modTerm(1, this.value)">
+		</span>
+		<span class="title" style="padding-top:60px;">Local Echo</span>
+		<a class="leftarrow" href="javascript:;" onclick="transport.settings.setLocalEcho(-1)">\<--</a>
+		<a class="rightarrow" href="javascript:;" onclick="transport.settings.setLocalEcho(1)">--\></a>
+		<div class="fileUpload btn btn-primary nomargin">
+			<span class="tooltiptext" style="visibility:visible;" id="autoEchoState">State: Enabled</span>
+			<span class="middle" id="currentLEcho">Force Off</span>
+		</div>
+		<span class="title" style="padding-top:50px">Colours</span>
+		<a class="leftarrow" href="javascript:;" onclick="transport.settings.cycleColorSchemes(0)">\<--</a>
+		<span class="middle" id="currentColor">Monokai</span>
+		<a class="rightarrow" href="javascript:;" onclick="transport.settings.cycleColorSchemes(1)">--\></a>
+		<div class="fileUpload btn btn-primary">
+			<span class="tooltiptext">Format: Xresources</span>
+			<span class="middle" style="width:220px;">Upload</span>
+			<input type="file" title=" " id="Xresources" class="upload" onchange="transport.settings.importXresources()" />
+		</div>
+		<span class="title" style="padding-top:20px;">Keep Alive</span>
+		<div class="fileUpload btn btn-primary">
+			<span class="tooltiptext">0 to disable</span>
+			<input type="number" class="large" id="keepAlive" onchange="transport.settings.setKeepAlive(this.value);" placeholder="0">
+			<span style="font-size:16px;"> seconds</span>
+		</div>
+		<span class="title" style="padding-top:20px;">Network Traffic</span>
+		<div class="netTraffic">
+			<span class="leftarrow brightgreen">rx: <span id="rxTraffic"></span></span>
+			<span class="rightarrow brightyellow">tx: <span id="txTraffic"></span></span>
+		</div>
+		<div id="hostKey" style="display: none;">
+			<span class="title" style="padding-top:20px;">Host Key</span>
+			<span id="hostKeyImg" class="hostKeyImg"></span>
+		</div>
+	</div>
+	<span id="gear" class="gear" style="visibility:visible;" onclick="toggleNav(250)">&#9881</span>
 </body>
 </html>
